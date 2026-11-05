@@ -1,0 +1,28 @@
+[project]
+name = "torch-directml-backwards"
+version = "0.1.0.dev261106"
+description = "An unofficial maintenance fork of torch-directml"
+readme = "README.md"
+requires-python = ">=3.12,<3.16"
+# Bundled third-party code and the DirectML runtime retain their own license terms.
+license = "MIT AND BSD-3-Clause AND Apache-2.0 AND LicenseRef-Microsoft-DirectML"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = [
+    "torch==2.15.0",
+    "torchvision==0.29.2",
+]
+
+[project.urls]
+Repository = "https://github.com/cyrne1-7208/torch-directml-backwards"
+
+[tool.torch-directml]
+directml-version = "1.15.4"
+directml-sha256 = "4e7cb7ddce8cf837a7a75dc029209b520ca0101470fcdf275c1f49736a3615b9"
+
+[dependency-groups]
+dev = [
+    "capstone",
+    "lief",
+    "ruff",
+    "wheel",
+]

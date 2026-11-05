@@ -1,0 +1,331 @@
+# Copyright (c) 2026 Cyrne1. MIT License; see tools/ci/LICENSE.
+name: GCP checks
+
+on:
+  workflow_call:
+    inputs:
+      revision:
+        type: string
+        required: true
+      plan:
+        type: string
+        required: true
+    secrets:
+      RUNNER_ADMIN_TOKEN:
+        required: true
+      GCP_PROJECT:
+        required: true
+      GCP_WIF_PROVIDER:
+        required: true
+      GCP_SERVICE_ACCOUNT:
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: gcp-t4
+  cancel-in-progress: false
+
+env:
+  VM_NAME: tdml-${{ github.run_id }}-${{ github.run_attempt }}
+
+jobs:
+  build:
+    name: 2. Build and CPU Check
+    if: fromJSON(inputs.plan).build
+    runs-on: windows-2025
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    outputs:
+      attempt: ${{ github.run_attempt }}
+    steps:
+      - name: 2.1. Check out the approved revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.revision }}
+      - name: 2.2. Set up uv and Python
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: '0.13.7'
+          python-version: '3.12'
+      - name: 2.3. Install build tools
+        run: uv sync --locked --only-group dev
+      - name: 2.4. Check Python code
+        run: .venv\Scripts\ruff.exe check tools tests
+      - name: 2.5. Build selected targets
+        shell: powershell
+        env:
+          REVISION: ${{ inputs.revision }}
+          ABIS: ${{ toJSON(fromJSON(inputs.plan).abis) }}
+        run: tools\ci\build.ps1 -Revision $env:REVISION -Abis ($env:ABIS | ConvertFrom-Json)
+      - name: 2.6. CPU Check
+        shell: powershell
+        env:
+          REVISION: ${{ inputs.revision }}
+          ABIS: ${{ toJSON(fromJSON(inputs.plan).abis) }}
+        run: tools\ci\cpu.ps1 -Revision $env:REVISION -Abis ($env:ABIS | ConvertFrom-Json)
+      - name: 2.7. Prepare CPU-checked wheels for GPU testing
+        if: fromJSON(inputs.plan).gpu
+        env:
+          REVISION: ${{ inputs.revision }}
+          ABIS: ${{ toJSON(fromJSON(inputs.plan).gpu_abis) }}
+          CHECKS: ${{ toJSON(fromJSON(inputs.plan).checks) }}
+        run: .venv\Scripts\python.exe tools/ci/prepare.py --revision $env:REVISION --abis ($env:ABIS | ConvertFrom-Json) --checks ($env:CHECKS | ConvertFrom-Json)
+      - name: 2.8. Upload GPU inputs
+        if: fromJSON(inputs.plan).gpu
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gpu-input-${{ github.run_attempt }}
+          path: .work/ci/payload/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+      - name: 2.9. Save build results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: build-results-${{ github.run_attempt }}
+          path: .work/ci/results/
+          include-hidden-files: true
+          retention-days: 7
+
+  start-vm:
+    name: 3. GCP setup
+    needs: build
+    if: fromJSON(inputs.plan).gpu && needs.build.outputs.attempt == github.run_attempt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+      id-token: write
+    env:
+      CLOUDSDK_CORE_PROJECT: ${{ secrets.GCP_PROJECT }}
+    steps:
+      - name: 3.1. Check out trusted CI scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/ci
+          ref: ${{ github.workflow_sha }}
+      - name: 3.2. Check CI configuration
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          RUNNER_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
+        run: |
+          test -n "$CLOUDSDK_CORE_PROJECT" && test -n "$WIF_PROVIDER" && test -n "$SERVICE_ACCOUNT" && test -n "$RUNNER_TOKEN" || exit 1
+          # GCP errors can report the project number without the full provider path.
+          project_number=${WIF_PROVIDER#projects/}
+          echo "::add-mask::${project_number%%/*}"
+      - name: 3.3. Authenticate with GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        id: auth
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 3600s
+      - name: 3.4. Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: 3.5. Quote affordable Spot T4 zones
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          GCP_ZONES: ${{ vars.GCP_ZONES }}
+        run: |
+          python3 tools/ci/rank_zones.py --max-hourly-usd 0.30 > "$RUNNER_TEMP/zones.tsv"
+          cat "$RUNNER_TEMP/zones.tsv"
+      - name: 3.6. Register a single-use runner
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
+        run: |
+          gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runners/generate-jitconfig" \
+            -f name="$VM_NAME" -F runner_group_id=1 -f "labels[]=$VM_NAME" -f work_folder=_work > "$RUNNER_TEMP/registration.json"
+          jit=$(jq -r .encoded_jit_config "$RUNNER_TEMP/registration.json")
+          echo "::add-mask::$jit"
+          printf '%s' "$jit" > "$RUNNER_TEMP/jit-config"
+          rm "$RUNNER_TEMP/registration.json"
+      - name: 3.7. Create one Spot VM
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          GCP_NETWORK: ${{ vars.GCP_NETWORK || 'default' }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          active=$(gcloud compute instances list --filter='labels.purpose=tdml-ci' --format='value(name)')
+          test -z "$active" || { echo 'Another tdml-ci VM is still active'; exit 1; }
+          deadline=$(date -u -d '+50 minutes' +'%Y-%m-%dT%H:%M:%SZ')
+          attempts=0
+          blocked_regions=()
+          while read -r zone price; do
+            region=${zone%-*}
+            if [[ " ${blocked_regions[*]} " == *" $region "* ]]; then continue; fi
+            attempts=$((attempts + 1))
+            if [ "$attempts" -gt 3 ]; then break; fi
+            echo "Trying $zone at an estimated \$$price/hour, including Windows, disk and IPv4"
+            if gcloud compute instances create "$VM_NAME" --zone="$zone" --network="$GCP_NETWORK" \
+                --machine-type=n1-standard-2 --accelerator=type=nvidia-tesla-t4,count=1 \
+                --provisioning-model=SPOT --instance-termination-action=DELETE --termination-time="$deadline" \
+                --maintenance-policy=TERMINATE --no-service-account --no-scopes \
+                --create-disk="name=$VM_NAME,description=$VM_NAME,boot=yes,auto-delete=yes,size=50GB,type=pd-balanced,image-family=windows-2025,image-project=windows-cloud" \
+                --labels="purpose=tdml-ci,gh-run=$VM_NAME" \
+                --metadata="tdml-ci-revision=$REVISION,runner-version=2.338.2,runner-sha256=a1f17aa987fc8158bc7521d284912267a0d01b7c2c4684b33c86783b5e8221cc" \
+                --metadata-from-file="jit-config=$RUNNER_TEMP/jit-config,windows-startup-script-ps1=tools/ci/startup.ps1" \
+                --quiet --format='value(name)' 2> "$RUNNER_TEMP/create-error"; then
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/create-error"
+            if grep -q GPUS_ALL_REGIONS "$RUNNER_TEMP/create-error"; then exit 1; fi
+            grep -qE 'ZONE_RESOURCE_POOL_EXHAUSTED|does not have enough resources|QUOTA_EXCEEDED|Quota .* exceeded' "$RUNNER_TEMP/create-error" || exit 1
+            # A regional quota failure applies to the other zones in that region too.
+            if grep -qE 'QUOTA_EXCEEDED|Quota .* exceeded' "$RUNNER_TEMP/create-error"; then blocked_regions+=("$region"); fi
+          done < "$RUNNER_TEMP/zones.tsv"
+          echo 'No affordable Spot T4 was available within three creation attempts'
+          exit 1
+      - name: 3.8. Wait for GPU job assignment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 90); do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq ".jobs[] | select(.runner_name == \"$VM_NAME\") | .status")
+            if [ "$status" = in_progress ] || [ "$status" = completed ]; then exit 0; fi
+            sleep 10
+          done
+          echo 'The GPU job did not acquire its runner within 15 minutes'
+          exit 1
+      - name: 3.9. Cancel a stranded GPU job
+        if: failure() || cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh api -X POST "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/cancel" 2> "$RUNNER_TEMP/cancel-error"; then
+            grep -q 'HTTP 409' "$RUNNER_TEMP/cancel-error" || { cat "$RUNNER_TEMP/cancel-error"; exit 1; }
+          fi
+
+  gpu:
+    name: 4. GPU checks
+    # Queue before VM startup, so start-vm can verify assignment and cancel a stranded job.
+    needs: build
+    if: fromJSON(inputs.plan).gpu && needs.build.outputs.attempt == github.run_attempt
+    runs-on: tdml-${{ github.run_id }}-${{ github.run_attempt }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: 4.1. Download this attempt's GPU inputs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gpu-input-${{ github.run_attempt }}
+          path: C:\tdml
+      - name: 4.2. Install and GPU-test selected targets
+        shell: powershell
+        env:
+          REVISION: ${{ inputs.revision }}
+        run: C:\tdml\windows.ps1 -Revision $env:REVISION
+      - name: 4.3. Save GPU results
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gpu-results-${{ github.run_attempt }}
+          path: C:\tdml\results\
+          if-no-files-found: error
+          retention-days: 7
+      - name: 4.4. Save validated wheels
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: validated-wheels-${{ github.run_attempt }}
+          path: |
+            C:\tdml\wheels\*.whl
+            C:\tdml\manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+  cleanup:
+    name: 5. Cleanup
+    needs: [build, start-vm, gpu]
+    if: always() && needs.start-vm.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    env:
+      CLOUDSDK_CORE_PROJECT: ${{ secrets.GCP_PROJECT }}
+      # A cleanup-only rerun must still target the attempt that built the VM's inputs.
+      VM_NAME: ${{ format('tdml-{0}-{1}', github.run_id, needs.build.outputs.attempt || github.run_attempt) }}
+    steps:
+      - name: 5.1. Mask the GCP project number
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WIF_PROVIDER }}
+        run: |
+          project_number=${WIF_PROVIDER#projects/}
+          echo "::add-mask::${project_number%%/*}"
+      - name: 5.2. Authenticate for cleanup
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        id: auth
+        with:
+          create_credentials_file: false
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+          access_token_lifetime: 3600s
+      - name: 5.3. Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+      - name: 5.4. Delete the VM and leftover boot disks
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          failed=0
+          gcloud compute operations list --filter="operationType=insert AND status!=DONE AND (targetLink~'/instances/$VM_NAME\$' OR targetLink~'/disks/$VM_NAME\$')" --format='value(name,zone.basename())' > "$RUNNER_TEMP/operations"
+          while read -r name zone; do
+            test -z "$name" || gcloud compute operations wait "$name" --zone="$zone" --format='value(status)' || failed=1
+          done < "$RUNNER_TEMP/operations"
+          gcloud compute instances list --filter="labels.gh-run=$VM_NAME AND labels.purpose=tdml-ci" --format='value(name,zone.basename())' > "$RUNNER_TEMP/instances"
+          while read -r name zone; do
+            test -z "$name" || gcloud compute instances delete "$name" --zone="$zone" --quiet || failed=1
+          done < "$RUNNER_TEMP/instances"
+          gcloud compute disks list --filter="name=$VM_NAME AND description=$VM_NAME" --format='value(name,zone.basename(),users)' > "$RUNNER_TEMP/disks"
+          while read -r name zone users; do
+            test -n "$name" || continue
+            if [ -n "$users" ]; then echo "Disk $name is still attached"; failed=1; continue; fi
+            gcloud compute disks delete "$name" --zone="$zone" --quiet || failed=1
+          done < "$RUNNER_TEMP/disks"
+          exit "$failed"
+      - name: 5.5. Remove an unused runner registration
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.RUNNER_ADMIN_TOKEN }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runners?per_page=100" --jq ".runners[] | select(.name == \"$VM_NAME\") | .id" > "$RUNNER_TEMP/runners"
+          while read -r id; do
+            test -n "$id" || continue
+            if ! gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runners/$id" 2> "$RUNNER_TEMP/runner-error"; then
+              grep -q 'HTTP 404' "$RUNNER_TEMP/runner-error" || { cat "$RUNNER_TEMP/runner-error"; exit 1; }
+            fi
+          done < "$RUNNER_TEMP/runners"
+
+  result:
+    name: 6. Result
+    needs: [build, start-vm, gpu, cleanup]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: 6.1. Verify all phases completed successfully
+        env:
+          BUILD_REQUIRED: ${{ fromJSON(inputs.plan).build }}
+          GPU_REQUIRED: ${{ fromJSON(inputs.plan).gpu }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          SETUP_RESULT: ${{ needs.start-vm.result }}
+          GPU_RESULT: ${{ needs.gpu.result }}
+          CLEANUP_RESULT: ${{ needs.cleanup.result }}
+        run: |
+          if [ "$BUILD_REQUIRED" = true ] && [ "$BUILD_RESULT" != success ]; then
+            echo "::error::Build or CPU Check did not succeed: $BUILD_RESULT"
+            exit 1
+          fi
+          if [ "$GPU_REQUIRED" = true ] && { [ "$SETUP_RESULT" != success ] || [ "$GPU_RESULT" != success ] || [ "$CLEANUP_RESULT" != success ]; }; then
+            echo "::error::CI phases did not all succeed: build=$BUILD_RESULT setup=$SETUP_RESULT gpu=$GPU_RESULT cleanup=$CLEANUP_RESULT"
+            exit 1
+          fi
