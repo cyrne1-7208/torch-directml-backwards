@@ -1,0 +1,11 @@
+# CPython 3.12 / Windows x64, with the GIL enabled.
+[python]
+version = "3.12"
+
+[python.sdk]
+version = "3.12.10"
+sha256 = "0eb85c2dfccccf1b17352de4c397f69194035b7d37149eacc16f1147d93de3b8"
+
+[target.wheels]
+"2.14.1" = "38bee9f2a2ccfc6898172a5075e4ba52522fbe143eeb099674fc67ab390e858d"
+"2.15.0" = "f2bd0a3709a7493a6ef2ac5a654111242a854439f7558f910b6b653b56f7504d"

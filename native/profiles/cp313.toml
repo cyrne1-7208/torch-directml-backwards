@@ -1,0 +1,49 @@
+# CPython 3.13 / Windows x64, with the GIL enabled.
+[python]
+version = "3.13"
+
+[python.sdk]
+version = "3.13.17"
+sha256 = "dce409744b088f94c6e37ba41f8100c384c27e029e843237364c602d30d475e5"
+
+[target.wheels]
+"2.14.1" = "711713391d26a1ce5e9fbc6c996d954a8c12e8825374cc77b809a6af29539b8c"
+"2.15.0" = "e079089d36401261ebe145504309d0114fb9a00529eac4b33048221d2376a15c"
+
+[[imports]]
+library = "python313.dll"
+before = "_PyThreadState_UncheckedGet"
+after = "PyThreadState_GetUnchecked"
+
+[[edits]]
+reason = "Identify the supported CPython minor version in the existing module initializer"
+rvas = [0x177430]
+before = "332e3132"
+after = "332e3133"
+
+[native]
+sources = ["python_bindings.cpp"]
+
+[[native.trampolines]]
+reason = "Traverse CPython 3.13 managed dictionaries without materializing them during GC"
+rva = 0x1142c0
+before = "48895c2408"
+symbol = "tdml_python_traverse"
+
+[[native.trampolines]]
+reason = "Clear CPython 3.13 managed dictionaries through the current API"
+rva = 0x114330
+before = "4883ec28ff15be560400"
+symbol = "tdml_python_clear"
+
+[[native.trampolines]]
+reason = "Acquire the original GIL guard using the current PyThreadState layout"
+rva = 0x114370
+before = "48895c2408"
+symbol = "tdml_gil_acquire"
+
+[[native.trampolines]]
+reason = "Release the original GIL guard using the current PyThreadState layout"
+rva = 0x114420
+before = "40534883ec20"
+symbol = "tdml_gil_dec_ref"

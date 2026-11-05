@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export JAVA_HOME="$project_dir/.tools/java"
+# Keep Ghidra settings inside the workspace as well.
+mkdir -p "$project_dir/.cache/ghidra"
+export JAVA_TOOL_OPTIONS="${JAVA_TOOL_OPTIONS:+$JAVA_TOOL_OPTIONS }-Duser.home=$project_dir/.cache/ghidra"
+exec "$project_dir/.tools/ghidra/support/analyzeHeadless" "$@"

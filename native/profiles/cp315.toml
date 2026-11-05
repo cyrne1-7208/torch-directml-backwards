@@ -1,0 +1,83 @@
+# CPython 3.15 / Windows x64, with the GIL enabled.
+[python]
+version = "3.15"
+
+[python.sdk]
+version = "3.15.2"
+sha256 = "294f5ed7ab97148fcbb57b8c06ba428f6d282c2bbaa266dbe3137284497998f0"
+
+[target.wheels]
+"2.15.0" = "04597a77bbcc7a1a01e7b9efce78d258b18a7f31bcb190f4ee00360bff75e7f6"
+
+[[imports]]
+library = "python315.dll"
+before = "_PyThreadState_UncheckedGet"
+after = "PyThreadState_GetUnchecked"
+
+[[edits]]
+reason = "Identify the supported CPython minor version in the existing module initializer"
+rvas = [0x177430]
+before = "332e3132"
+after = "332e3135"
+
+# CPython 3.14 and later add a tuple hash field, moving the first element from 0x18 to 0x20.
+# Update four argument sites, one callback and the MHA/RoPE return values.
+[[edits]]
+reason = "Use the CPython 3.15 tuple element offset in argument dispatch and tuple results"
+rvas = [0x116704, 0x11699f, 0x116a64, 0x11723e, 0x118888, 0x11fe60, 0x120fd0]
+before = "18"
+after = "20"
+
+[[edits]]
+reason = "Use the CPython 3.15 tuple element offset when traversing type bases"
+rvas = [0x1120e2, 0x112444, 0x113717]
+before = "488d4f18"
+after = "488d4f20"
+
+# The list element pointer remains at 0x18; do not move it with the tuple elements.
+[[edits]]
+reason = "Retain the list element pointer at its original offset in sequence traversal"
+rvas = [0x1120f8, 0x11245a, 0x11372d]
+before = "7408488b19488bcbeb03488bd9"
+after = "7404488b4f18488bd990909090"
+
+# CPython 3.15 extends PyTypeObject, moving heap-type name and qualified-name fields by eight bytes.
+# Keep CPython's type allocation and update only writes in the three original type constructors.
+[[edits]]
+reason = "Use the CPython 3.15 heap type name offset in the original type constructors"
+rvas = [0x112c56, 0x112c5f, 0x113556, 0x11355f, 0x114117, 0x114120]
+before = "58030000"
+after = "60030000"
+
+[[edits]]
+reason = "Use the CPython 3.15 heap type qualified name offset in the original type constructors"
+rvas = [0x112c74, 0x113574, 0x114135]
+before = "68030000"
+after = "70030000"
+
+[native]
+sources = ["python_bindings.cpp"]
+
+[[native.trampolines]]
+reason = "Traverse CPython 3.15 managed dictionaries without materializing them during GC"
+rva = 0x1142c0
+before = "48895c2408"
+symbol = "tdml_python_traverse"
+
+[[native.trampolines]]
+reason = "Clear CPython 3.15 managed dictionaries through the current API"
+rva = 0x114330
+before = "4883ec28ff15be560400"
+symbol = "tdml_python_clear"
+
+[[native.trampolines]]
+reason = "Acquire the original GIL guard using the current PyThreadState layout"
+rva = 0x114370
+before = "48895c2408"
+symbol = "tdml_gil_acquire"
+
+[[native.trampolines]]
+reason = "Release the original GIL guard using the current PyThreadState layout"
+rva = 0x114420
+before = "40534883ec20"
+symbol = "tdml_gil_dec_ref"
