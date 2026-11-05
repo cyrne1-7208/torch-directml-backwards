@@ -1,5 +1,7 @@
 # torch-directml-backwards
 
+[![GCP CI](https://github.com/cyrne1-7208/torch-directml-backwards/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/cyrne1-7208/torch-directml-backwards/actions/workflows/ci.yml?query=branch%3Amain)
+
 ## Overview
 
 An unofficial maintenance fork of [torch-directml](https://pypi.org/project/torch-directml/), currently under development.
