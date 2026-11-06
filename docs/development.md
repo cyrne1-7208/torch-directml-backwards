@@ -47,6 +47,6 @@ To build all supported targets on Windows, run `tools\ci\build.ps1 -Revision loc
 - CPython: update the SDK version and hash in the corresponding profile. A new minor version also needs its own ABI profile and native compatibility review. Free-threaded builds are outside the current profiles.
 - DirectML: update the NuGet version and SHA256 in `pyproject.toml`. Keep its DLL and license files unchanged.
 
-For an updated target, install the generated wheel into a fresh environment and run both existing checks normally and with `--cpu-only`. Changes shared by all targets require checks across the full matrix. Record the actual compiler, SDK, Python, PyTorch and GPU driver versions with the results. A build or resolved import table alone is not a runtime check.
+For an updated target, install the generated wheel into a fresh environment and run the [runtime checks](native-abi.md#runtime-checks). Changes shared by all targets require checks across the full matrix. Record the actual compiler, SDK, Python, PyTorch and GPU driver versions with the results. A build or resolved import table alone is not a runtime check.
 
 See the [native build and test commands](native-abi.md#build) and [wheel packaging](packaging.md).

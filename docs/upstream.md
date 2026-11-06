@@ -6,7 +6,7 @@ This project is based on the Windows x64 wheel of [torch-directml 0.2.5.dev24091
 torch_directml-0.2.5.dev240914-cp312-cp312-win_amd64.whl
 ```
 
-The Python files in `src/torch_directml/` come from this wheel. The public API structure is preserved, and AMP state is managed by the target PyTorch version. `LICENSE` is unchanged. `NOTICE` retains the original text and adds license notices for the PyTorch headers and pybind11 GIL-management code used by the added implementation.
+The Python files in `src/torch_directml/` come from this wheel. The public API structure is preserved, and AMP state is managed by the target PyTorch version. `LICENSE` retains the upstream license text and adds a copyright notice for Cyrne1's modifications. `NOTICE` retains the original text and adds license notices for the PyTorch headers and pybind11 GIL-management code used by the added implementation.
 
 This project's version is independent of the upstream version. It targets standard CPython builds with the GIL enabled: PyTorch 2.14.1 on Python 3.12 through 3.14, and PyTorch 2.15.0 on Python 3.12 through 3.15. The development environment uses PyTorch 2.15.0; each distribution wheel pins the PyTorch version it was compiled for. [torchvision 0.29.2](https://pypi.org/project/torchvision/0.29.2/) is used because its official wheel is independent of the Python version.
 

@@ -51,10 +51,13 @@ From the repository root, with the built wheel installed:
 
 ```powershell
 .venv\Scripts\python.exe tests\check_backend.py
+.venv\Scripts\python.exe tests\check_ops.py
+.venv\Scripts\python.exe tests\check_nn.py
+.venv\Scripts\python.exe tests\check_functions.py
 .venv\Scripts\python.exe tests\check_amp.py
 ```
 
-GPU checks run by default. Add `--cpu-only` to run CPU Check only. See [test details](docs/native-abi.md#runtime-checks).
+GPU checks run by default. Use `--cpu-only` with `check_backend.py` and `check_amp.py` for CPU-only verification; the other scripts require a GPU. See [test details](docs/native-abi.md#runtime-checks).
 
 ## License
 

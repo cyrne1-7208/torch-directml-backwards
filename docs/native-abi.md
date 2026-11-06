@@ -114,33 +114,49 @@ For PyTorch 2.14.1 on CPython 3.12 through 3.14, select its matching Python whee
 
 ## Runtime checks
 
-After installing the assembled wheel on Windows, run:
+With the built wheel installed on Windows, run these scripts from the repository root:
 
 ```sh
 python tests/check_backend.py
+python tests/check_ops.py
+python tests/check_nn.py
+python tests/check_functions.py
 python tests/check_amp.py
+```
+
+| Script | Checks |
+| --- | --- |
+| `check_backend.py` | Import and binding ABI, Tensor lifetime and aliasing, random state, bilinear forward/backward, and synchronization |
+| `check_ops.py` | Pointwise, reduction, ordering, indexing and layout operations; integer widths, FP16/FP32, promotion, out/in-place paths, and applicable gradients |
+| `check_nn.py` | Matrix products, convolutions, pooling, padding, normalization, losses, gradients, running statistics, and a training step |
+| `check_functions.py` | Attention with masks and caches, rotary positions, RMSNorm weights/epsilon, and Phi-2, Llama and Phi-3 MLPs against unfused CPU references |
+| `check_amp.py` | Numerical results and dtypes for each explicit autocast policy, context state, exclusions, running statistics, and GradScaler updates |
+
+Numerical checks compare values, shapes, dtypes and devices with CPU references. Integer values and indices must match exactly; floating-point tolerances depend on dtype. Nonuniform upstream gradients check applicable backward paths. These are regression checks, not an exhaustive implementation of every PyTorch operator. Existing CPU fallback warnings remain visible; a successful numerical comparison alone does not establish GPU execution.
+
+For CPU Check without a GPU, run:
+
+```sh
 python tests/check_backend.py --cpu-only
 python tests/check_amp.py --cpu-only
 ```
 
-`check_backend.py` checks extension import, device arguments, operator registration, CPU arithmetic, NMS and generator state. By default, it also checks GPU transfers, views, gradients, bilinear resampling, synchronization and native Tensor/tuple bindings. `check_amp.py` checks autocast state, dtype policies, BatchNorm state and GradScaler training with finite and non-finite gradients. Both scripts require an available DirectML GPU unless `--cpu-only` is specified.
-
 Supported combinations and tested hardware are listed in the [README](../README.md#compatibility). The `torch.accelerator` memory-statistics and cache-control APIs are not implemented.
 
-Additional CPU checks execute the code appended to the installed extension: CPU fallback, Tensor construction/detach/destruction, NMS, and exception unwinding. They require LIEF from the development dependencies. Build on Windows, or supply a Windows cross-compilation toolchain to CMake on Linux. Build the checks DLL with the target PyTorch headers and the same `native-code.bin` used for the wheel:
+### Native ABI and queue checks
+
+CI also builds and runs a small C++ checks DLL against each target's PyTorch headers and libraries. It calls the actual fallback, Tensor constructor and NMS code inside the installed extension. NMS uses different thresholds and checks exception propagation. GPU checks block the backend queue with a test-owned fence, then observe its submission fence before any CPU readback to test query and synchronization independently.
+
+To build the same checks on Windows, use the [native build environment](development.md#native-build-tools) with CMake 3.25 or newer and Ninja on `PATH`:
 
 ```sh
-cmake -S tests/native -B .work/cp315-torch2.15.0-win_amd64/checks \
-  -DTORCH_ROOT="$PWD/.work/cp315-torch2.15.0-win_amd64/build/torch" \
-  -DNATIVE_ROOT="$PWD/.work/cp315-torch2.15.0-win_amd64/build"
-cmake --build .work/cp315-torch2.15.0-win_amd64/checks --config Release
+python tools/build.py build cp312 2.15.0 --native-checks --work-dir .work/check-build --output-dir .work/check-artifacts
 ```
 
-CMake copies the matching linker intermediate beside the checks DLL so the script can locate the functions in the installed extension. For a multi-configuration Windows build, run:
+Install the wheel generated in `.work/check-artifacts/` with the target interpreter, then run:
 
 ```sh
-python tests/check_backend.py --cpu-only --native-checks .work/cp315-torch2.15.0-win_amd64/checks/Release/native_checks.dll
+python tests/check_backend.py --native-checks .work/check-artifacts/native_checks.dll
 ```
 
-A single-configuration build puts `native_checks.dll` directly in that target's `checks/` directory.
-
+Add `--cpu-only` to run only the native CPU checks. The adjacent `native_checks.json` contains internal function addresses and the matching extension hash, so LIEF is needed only in the build environment. A mismatched installed extension is rejected before calling those addresses. Without `--native-checks`, the standalone script reports the independent queue/fence check as not run.

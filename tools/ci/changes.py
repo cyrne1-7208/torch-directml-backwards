@@ -6,7 +6,7 @@ import re
 import subprocess
 from pathlib import Path
 
-CHECKS = {"check_backend", "check_amp"}
+CHECKS = {"check_backend", "check_ops", "check_nn", "check_functions", "check_amp"}
 
 
 def gh_api(path):
@@ -36,10 +36,18 @@ def select_checks(paths):
         elif name in {
             "tests/check_backend.py",
             "native/resample.cpp",
-            "src/torch_directml/functions.py",
-        }:
+        } or name.startswith("tests/native/"):
             all_abis = all_gpu_abis = True
             checks.add("check_backend")
+        elif name in {"tests/check_functions.py", "src/torch_directml/functions.py"}:
+            all_abis = all_gpu_abis = True
+            checks.add("check_functions")
+        elif name == "tests/check_ops.py":
+            all_abis = all_gpu_abis = True
+            checks.add("check_ops")
+        elif name == "tests/check_nn.py":
+            all_abis = all_gpu_abis = True
+            checks.update({"check_nn", "check_amp"})
         elif name == "tests/check_amp.py":
             all_abis = all_gpu_abis = True
             checks.add("check_amp")

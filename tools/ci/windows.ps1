@@ -33,12 +33,16 @@ function Disable-ServiceIfPresent([string]$Name) {
     }
 }
 
-function Invoke-Check([string]$Python, [string]$Target, [string]$Name) {
+function Invoke-Check([string]$Python, [string]$Target, [string]$Name, [string]$NativeChecks) {
     $Stdout = Join-Path $Results "$Target-$Name.stdout.txt"
     $Stderr = Join-Path $Results "$Target-$Name.stderr.txt"
     $Script = Join-Path $Root "tests\$Name.py"
     $Watch = [Diagnostics.Stopwatch]::StartNew()
-    $Process = Start-Process $Python -ArgumentList @('-u', ('"{0}"' -f $Script)) `
+    $Arguments = @('-u', ('"{0}"' -f $Script))
+    if ($Name -eq 'check_backend') {
+        $Arguments += @('--native-checks', ('"{0}"' -f (Join-Path $Root $NativeChecks)))
+    }
+    $Process = Start-Process $Python -ArgumentList $Arguments `
         -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
     # Cache the handle before waiting; otherwise PowerShell 5.1 can lose ExitCode.
     $null = $Process.Handle
@@ -124,7 +128,7 @@ try {
             }
             $Record['environment'] = $Installed
             foreach ($Name in $Manifest.checks) {
-                $Record.tests += Invoke-Check $Python $Target.id $Name
+                $Record.tests += Invoke-Check $Python $Target.id $Name $Target.native_checks
                 Save-Status
             }
             $Record.outcome = if (@($Record.tests | Where-Object { $_.exit_code -ne 0 }).Count) { 'failed' } else { 'passed' }

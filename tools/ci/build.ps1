@@ -34,7 +34,7 @@ try {
     foreach ($Target in $Targets) {
         $Id = "$($Target.abi)-torch$($Target.torch)-win_amd64"
         $Output = Join-Path $Root ".work\ci\artifacts\$Id"
-        & $Python tools/build.py build $Target.abi $Target.torch --revision $Revision --output-dir $Output
+        & $Python tools/build.py build $Target.abi $Target.torch --revision $Revision --output-dir $Output --native-checks
         if ($LASTEXITCODE -ne 0) { throw "Build failed: $Id" }
         Write-Host "PASS build: $Id"
     }

@@ -11,8 +11,10 @@ import tempfile
 import tomllib
 import urllib.parse
 import urllib.request
+import zipfile
 from pathlib import Path
 
+import lief
 from native_abi import PROFILES, load_profile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -153,10 +155,63 @@ def build(args):
         check=True,
     )
     (wheel,) = output.glob("*.whl")
+    with zipfile.ZipFile(wheel) as archive:
+        (metadata,) = (
+            name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+        )
+        licenses = metadata.removesuffix("METADATA") + "licenses/"
+        for name in (
+            "LICENSE",
+            "NOTICE",
+            "directml/LICENSE.txt",
+            "directml/ThirdPartyNotices.txt",
+        ):
+            if not archive.read(licenses + name).strip():
+                raise ValueError(
+                    f"The generated wheel has an empty license file: {name}"
+                )
     with wheel.open("rb") as stream:
         digest = hashlib.file_digest(stream, "sha256").hexdigest()
     with native.open("rb") as stream:
         native_hash = hashlib.file_digest(stream, "sha256").hexdigest()
+    if args.native_checks:
+        checks = work / "checks"
+        subprocess.run(
+            [
+                "cmake",
+                "-S",
+                str(ROOT / "tests/native"),
+                "-B",
+                str(checks),
+                "-G",
+                "Ninja",
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_CXX_COMPILER=clang-cl",
+                f"-DTORCH_ROOT={build_dir / 'torch'}",
+            ],
+            check=True,
+        )
+        subprocess.run(
+            ["cmake", "--build", str(checks), "--config", "Release"], check=True
+        )
+        (library,) = checks.rglob("native_checks.dll")
+        shutil.copyfile(library, output / library.name)
+        # Bind internal RVAs to the installed binary without requiring LIEF in each runtime environment.
+        code = lief.PE.parse(build_dir / "native-code.bin")
+        exports = {entry.name: entry.address for entry in code.get_export().entries}
+        symbols = {
+            name: exports[name]
+            for name in (
+                "tdml_torch_version",
+                "tdml_nms",
+                "tdml_tensor_construct",
+            )
+        }
+        (output / "native_checks.json").write_text(
+            json.dumps({"native_sha256": native_hash, "rvas": symbols}, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
     manifest = {
         "revision": args.revision,
         "id": target_id,
@@ -207,6 +262,11 @@ def main():
     make.add_argument("--work-dir", type=Path)
     make.add_argument("--output-dir", type=Path)
     make.add_argument("--revision", default=os.environ.get("GITHUB_SHA", "local"))
+    make.add_argument(
+        "--native-checks",
+        action="store_true",
+        help="Also build the C++ test DLL with CMake",
+    )
     args = parser.parse_args()
     try:
         if args.action == "matrix":

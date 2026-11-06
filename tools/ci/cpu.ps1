@@ -38,11 +38,6 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "Wheel installation failed: $Id" }
         & $TestPython -m pip check
         if ($LASTEXITCODE -ne 0) { throw "Dependency check failed: $Id" }
-        foreach ($Script in @('check_backend', 'check_amp')) {
-            & $TestPython -u (Join-Path $Root "tests\$Script.py") --cpu-only
-            if ($LASTEXITCODE -ne 0) { throw "CPU check failed: $Id $Script" }
-        }
-
         # Check the installed extension rather than importing a source-tree copy.
         $Code = 'import hashlib,json,pathlib,sys,torch,torch_directml,torch_directml_native; p=pathlib.Path(torch_directml_native.__file__).resolve(); print(json.dumps(dict(python=sys.version.split()[0],torch=torch.__version__.split("+")[0],native_sha256=hashlib.sha256(p.read_bytes()).hexdigest(),native_path=str(p))))'
         # Stdin preserves Python source quotes in Windows PowerShell 5.1.
@@ -51,6 +46,10 @@ try {
             throw "Installed wheel does not match its build manifest: $Id"
         }
         $Installed | ConvertTo-Json | Set-Content (Join-Path $Results "$Id.json") -Encoding UTF8
+        & $TestPython -u (Join-Path $Root 'tests\check_backend.py') --cpu-only --native-checks (Join-Path $Output 'native_checks.dll')
+        if ($LASTEXITCODE -ne 0) { throw "CPU native check failed: $Id" }
+        & $TestPython -u (Join-Path $Root 'tests\check_amp.py') --cpu-only
+        if ($LASTEXITCODE -ne 0) { throw "CPU AMP check failed: $Id" }
         $Manifest | Add-Member -NotePropertyName cpu_checked -NotePropertyValue $true -Force
         $Manifest | ConvertTo-Json -Depth 5 | Set-Content $ManifestPath -Encoding UTF8
         Write-Host "PASS wheel installation and CPU checks: $Id"
