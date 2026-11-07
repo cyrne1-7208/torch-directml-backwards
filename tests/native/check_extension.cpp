@@ -1,5 +1,6 @@
 #include <ATen/Functions.h>
 #include <ATen/core/dispatch/Dispatcher.h>
+#include <ATen/detail/PrivateUse1HooksInterface.h>
 #include <c10/core/TensorImpl.h>
 #include <c10/core/impl/VirtualGuardImpl.h>
 #include <d3d12.h>
@@ -80,6 +81,12 @@ extern "C" __declspec(dllexport) int tdml_check_native(void* module, unsigned nm
         }
         TORCH_CHECK(rejected, "Invalid NMS input did not propagate an exception");
         std::puts("PASS: in-module NMS and exception unwinding");
+
+        const auto& hooks = at::detail::getPrivateUse1Hooks();
+        TORCH_CHECK(hooks.isBuilt(), "PrivateUse1 hooks report not built");
+        TORCH_CHECK(hooks.isAvailable() == (hooks.deviceCount() > 0), "isAvailable inconsistent with deviceCount");
+        TORCH_CHECK(!hooks.hasPrimaryContext(0), "Primary context unexpectedly initialized before any GPU work");
+        std::puts("PASS: in-module GeneratorHooks (isBuilt, isAvailable, deviceCount, hasPrimaryContext)");
 
         return 0;
     }

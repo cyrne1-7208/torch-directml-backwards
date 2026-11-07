@@ -1,6 +1,6 @@
 [project]
 name = "torch-directml-backwards"
-version = "0.1.0.dev261106"
+version = "0.1.1.dev261108"
 description = "An unofficial maintenance fork of torch-directml"
 readme = "README.md"
 requires-python = ">=3.12,<3.16"

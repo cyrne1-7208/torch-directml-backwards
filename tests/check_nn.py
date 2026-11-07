@@ -333,31 +333,35 @@ def check_nn(device):
         device,
         gradients=True,
     )
-    # Upstream torch-directml does not support channel-wise PReLU broadcasting on GPU;
-    # multi-parameter weights incorrectly broadcast across the inner dimension.
-    # check(
-    #     "prelu/per-channel-weight",
-    #     functional.prelu,
-    #     (
-    #         torch.tensor(
-    #             [[[-0.8, 0.2, -0.3, 0.9], [0.4, -0.7, 0.6, -0.1]]], requires_grad=True
-    #         ),
-    #         torch.tensor([0.2, 0.7], requires_grad=True),
-    #     ),
-    #     device,
-    #     gradients=True,
-    # )
-    # Upstream torch-directml in-place mutates the 3D input tensor shape to 4D [B, M, 1, K].
-    # check(
-    #     "cdist/batched",
-    #     torch.cdist,
-    #     (
-    #         sample((2, 3, 4)).requires_grad_(),
-    #         (sample((2, 2, 4)).flip(-1) * 0.7 + 0.4).requires_grad_(),
-    #     ),
-    #     device,
-    #     gradients=False,
-    # )
+    check(
+        "prelu/per-channel-weight",
+        functional.prelu,
+        (
+            torch.tensor(
+                [[[-0.8, 0.2, -0.3, 0.9], [0.4, -0.7, 0.6, -0.1]]], requires_grad=True
+            ),
+            torch.tensor([0.2, 0.7], requires_grad=True),
+        ),
+        device,
+        gradients=True,
+    )
+    check(
+        "prelu/shared-weight",
+        functional.prelu,
+        (sample((2, 3, 4)).requires_grad_(), torch.tensor([0.25], requires_grad=True)),
+        device,
+        gradients=True,
+    )
+    check(
+        "cdist/batched",
+        torch.cdist,
+        (
+            sample((2, 3, 4)).requires_grad_(),
+            (sample((2, 2, 4)).flip(-1) * 0.7 + 0.4).requires_grad_(),
+        ),
+        device,
+        gradients=True,
+    )
     check(
         "dot",
         torch.dot,

@@ -21,6 +21,7 @@ The modified extension contains the original DirectML operator code and replacem
 | Named tensors | Remove obsolete calls because the target PyTorch has no named-tensor state. |
 | NMS | Call the current typed dispatcher, preserving CPU NMS computation and the original output device. |
 | Resampling | Match bilinear half-pixel coordinates in forward and backward, and retain fractional parameters in compiled-operator cache keys. |
+| Operators | Replace `_cdist_forward`, `_unique2` and `_prelu_kernel` to prevent input mutation, support multi-batch dimensions and handle per-channel weights. |
 
 The reviewed instruction changes are shared by PyTorch 2.14.1 and 2.15.0. The profile selects the target by its wheel hash, and the replacement code is compiled against that wheel's headers and import libraries. Rebuild for each target; sharing these instruction changes does not make the compiled extension independent of the PyTorch version.
 
@@ -31,6 +32,8 @@ The initialization-state hook reads the original backend manager's `INIT_ONCE` f
 For linear interpolation with `align_corners=False`, the forward H/W input offsets are +0.5 and output offsets are -0.5. The pinned runtime's `ResampleGrad1` requires the opposite offsets, -0.5 and +0.5, for matching backward gradients; passing the forward offsets shifts the gradient contributions in the wrong direction. Batch and channel offsets stay zero. Nearest and `align_corners=True` retain zero offsets.
 
 The compiled-operator cache-key helper copies each float's 32-bit representation into its existing 64-bit slot instead of truncating it to an integer. This distinguishes alignment and explicit-scale settings without changing the cache's storage or lookup mechanism.
+
+[`native/ops.cpp`](../native/ops.cpp) replaces `aten::_cdist_forward`, `_unique2` and `_prelu_kernel` to prevent input tensor mutation and support multi-dimensional and broadcast batching. The replacement cdist creates temporary 3D descriptors so the legacy operator does not alter caller shapes with `unsqueeze_`, and prelu uses composed DirectML operations to support per-channel weights across arbitrary dimensions. `_unique2` flattens inputs to 1D for the DirectML kernel and falls back to CPU when inverse indices or counts are requested.
 
 ## FP16 automatic mixed precision and completion checks
 

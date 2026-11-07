@@ -1,3 +1,5 @@
+#include "module.h"
+
 #include <torch/library.h>
 
 #include <array>
@@ -157,6 +159,20 @@ namespace torch_dml
     private:
         NativeObject<torch::CppFunction> m_function;
     };
+
+    template <typename Function>
+    torch::Library* RegisterOp(torch::Library* self,
+                               const char* name,
+                               Function* function,
+                               torch::_RegisterOrVerify mode)
+    {
+        NativeObject<torch::CppFunction> current(
+            ConstructCpp,
+            c10::KernelFunction::makeFromUnboxedRuntimeFunction(function),
+            c10::impl::CppSignature::make<Function>(),
+            nullptr);
+        return RegisterImpl(self, name, std::move(*current.Get()), mode);
+    }
 } // namespace torch_dml
 
 using namespace torch_dml;
@@ -198,6 +214,23 @@ extern "C" __declspec(dllexport) torch::Library* tdml_library_impl(torch::Librar
                                                                    LegacyCppFunction&& function,
                                                                    torch::_RegisterOrVerify mode)
 {
+    // Intercept legacy operators with structural defects or incomplete dimension handling.
+    std::string_view opName(name);
+    if (opName.starts_with("aten::"))
+        opName.remove_prefix(6);
+    if (opName == "_cdist_forward")
+        return RegisterOp(self, name, &CdistForward, mode);
+    if (opName == "_cdist_forward.out")
+        return RegisterOp(self, name, &CdistForwardOut, mode);
+    if (opName == "_unique2")
+        return RegisterOp(self, name, &Unique2, mode);
+    if (opName == "_unique2.out")
+        return RegisterOp(self, name, &Unique2Out, mode);
+    if (opName == "_prelu_kernel")
+        return RegisterOp(self, name, &PreluKernel, mode);
+    if (opName == "_prelu_kernel_backward")
+        return RegisterOp(self, name, &PreluKernelBackward, mode);
+
     CurrentFunction current(function);
     return RegisterImpl(self, name, std::move(*current.Get()), mode);
 }

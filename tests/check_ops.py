@@ -388,13 +388,17 @@ def check_ops(device):
         device,
     )
     check("nonzero", torch.nonzero, (x > 0,), device)
-    # Upstream torch-directml flattens unique output to 1D without reshaping >1D input descriptors, and omits return_inverse/counts.
-    check(
-        "unique",
-        torch.unique,
-        (torch.tensor([3, 1, 3, -2, 1, 0]),),
-        device,
-    )
+    # The legacy kernel flattens unique output to 1D without reshaping >1D input descriptors, and omits return_inverse/counts.
+    for return_inverse, return_counts in ((False, False), (True, False), (True, True)):
+        check(
+            f"unique/2d/inverse={return_inverse}/counts={return_counts}",
+            torch.unique,
+            (torch.tensor([[3, 1, 3], [-2, 1, 0]]),),
+            device,
+            kwargs={"return_inverse": return_inverse, "return_counts": return_counts},
+        )
+    check("unique/0d", torch.unique, (torch.tensor(5),), device)
+    check("unique/empty", torch.unique, (torch.tensor([]),), device)
     check(
         "index_put/accumulate",
         lambda a, i, v: a.index_put_((i,), v, accumulate=True),

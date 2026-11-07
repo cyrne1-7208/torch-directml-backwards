@@ -13,7 +13,7 @@ Download [Microsoft.AI.DirectML 1.15.4](https://www.nuget.org/packages/Microsoft
 
 The example produces a `cp315-cp315-win_amd64` wheel in `.work/dist/cp315-torch2.15.0-win_amd64/`, with `Requires-Python: >=3.15,<3.16`. The 3.12 through 3.14 extensions likewise produce wheels restricted to their own Python minor version. The target is independent of the Python running the packaging tool. The checked-in `dist/` directory contains the distributed wheels.
 
-The wheel build tag identifies its PyTorch version, for example `torch_directml_backwards-0.1.0.dev261106-2.15.0-cp315-cp315-win_amd64.whl`. The same value is recorded in `WHEEL`, and the wheel's metadata pins that PyTorch version.
+The wheel build tag identifies its PyTorch version, for example `torch_directml_backwards-0.1.1.dev261108-2.15.0-cp315-cp315-win_amd64.whl`. The same value is recorded in `WHEEL`, and the wheel's metadata pins that PyTorch version.
 
 An existing wheel with the same name is left untouched and causes an error.
 
@@ -30,7 +30,7 @@ In PowerShell, create an environment with the intended Python version, then inst
 ```powershell
 python --version
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install .\torch_directml_backwards-0.1.0.dev261106-2.15.0-cp312-cp312-win_amd64.whl
+.venv\Scripts\python.exe -m pip install .\torch_directml_backwards-0.1.1.dev261108-2.15.0-cp312-cp312-win_amd64.whl
 .venv\Scripts\python.exe -m pip check
 ```
 

@@ -48,6 +48,7 @@ def check_synchronization(device):
         assert_result(result, source @ source.T, device, atol=1e-4)
         result = value + size
         torch.accelerator.synchronize(device)
+        torch.privateuseone.synchronize(device)
         if not stream.query():
             raise AssertionError("Device synchronization did not complete pending work")
         assert_result(result, source + size, device)
@@ -317,6 +318,11 @@ def main():
     torch.testing.assert_close(
         generator.clone_state().get_state(), generator.get_state()
     )
+    if not torch.privateuseone.is_built():
+        raise AssertionError("PrivateUse1 hooks reported not built")
+    if torch.privateuseone.is_available() != (torch.privateuseone.device_count() > 0):
+        raise AssertionError("PrivateUse1 is_available inconsistent with device_count")
+    torch.privateuseone.manual_seed(456)
     native_checks = (
         load_native_checks(args.native_checks, extension)
         if args.native_checks

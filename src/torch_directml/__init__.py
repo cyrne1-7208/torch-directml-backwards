@@ -24,6 +24,11 @@ from .functions import *
 # Register the device module used by PyTorch's PrivateUse1 APIs.
 class PrivateUse1Module:
     @staticmethod
+    def is_built() -> bool:
+        r"""Returns a bool indicating if DML is built."""
+        return True
+
+    @staticmethod
     def is_available() -> bool:
         r"""Returns a bool indicating if DML is currently available."""
         if not hasattr(torch_directml_native, 'get_device_count'):
@@ -105,6 +110,16 @@ class PrivateUse1Module:
     def manual_seed_all(seed: int) -> None:
         # We use the CPU Generator for the random number generation
         default_generator.manual_seed(seed)
+
+    @staticmethod
+    def manual_seed(seed: int) -> None:
+        # We use the CPU Generator for the random number generation
+        default_generator.manual_seed(seed)
+
+    @staticmethod
+    def synchronize(device = None) -> None:
+        if is_available():
+            torch.accelerator.synchronize(device)
 
     # Registered as _StorageBase.privateuseone; self is a storage object.
     def _dml(self, dev=None, non_blocking=False, **kwargs):

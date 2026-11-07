@@ -27,7 +27,7 @@ For Python 3.12 and PyTorch 2.15.0, run the following from the repository root:
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install .\dist\cp312-torch2.15.0-win_amd64\torch_directml_backwards-0.1.0.dev261106-2.15.0-cp312-cp312-win_amd64.whl
+.venv\Scripts\python.exe -m pip install .\dist\cp312-torch2.15.0-win_amd64\torch_directml_backwards-0.1.1.dev261108-2.15.0-cp312-cp312-win_amd64.whl
 ```
 
 See [installation details](docs/packaging.md#install-update-and-remove) for other versions, updates and removal, or the [build instructions](docs/development.md#build-a-wheel) to build from source.

@@ -12,6 +12,22 @@ namespace
         {
         }
 
+        // Report backend availability and device count without initializing a GPU.
+        bool isBuilt() const override
+        {
+            return true;
+        }
+        bool isAvailable() const override
+        {
+            return deviceCount() > 0;
+        }
+        c10::DeviceIndex deviceCount() const override
+        {
+            using GetCount = int (*)();
+            const auto count = reinterpret_cast<GetCount>(torch_dml::ModuleBase() + 0x122180)();
+            return count > 0 ? static_cast<c10::DeviceIndex>(count) : 0;
+        }
+
         at::Generator getNewGenerator(c10::DeviceIndex device) const override
         {
             return m_factory(device);

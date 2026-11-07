@@ -1,6 +1,10 @@
 import torch_directml_native
 import torch
 
+def is_built() -> bool:
+    r"""Returns a bool indicating if DML is built."""
+    return True
+
 def is_available() -> bool:
     r"""Returns a bool indicating if DML is currently available."""
     if not hasattr(torch_directml_native, 'get_device_count'):
