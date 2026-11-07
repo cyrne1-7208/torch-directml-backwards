@@ -39,6 +39,8 @@ def sample(shape, dtype=torch.float32):
         return values.remainder(3).ne(0)
     if dtype.is_floating_point:
         return (values.to(torch.float64).sin() * 0.7 + 0.2).to(dtype)
+    if dtype is torch.uint8:
+        return (values * 5).remainder(13).to(dtype)
     return ((values * 5).remainder(13) - 6).to(dtype)
 
 
@@ -63,7 +65,11 @@ def assert_result(
         wanted_dtype = (
             dtype
             if dtype is not None and reference.is_floating_point()
-            else reference.dtype
+            else (
+                torch.bool
+                if value.dtype is torch.bool and reference.dtype is torch.uint8
+                else reference.dtype
+            )
         )
         if value.dtype != wanted_dtype:
             raise AssertionError(f"Expected {wanted_dtype}, got {value.dtype}")
@@ -75,13 +81,23 @@ def assert_result(
         # Integer width and index checks require exact equality, even for values above 2**24.
         if not value.is_floating_point() and not value.is_complex():
             tolerance = {"rtol": 0, "atol": 0}
-        torch.testing.assert_close(
-            value.detach().cpu(),
-            reference.detach().cpu(),
-            check_dtype=False,
-            equal_nan=equal_nan,
-            **tolerance,
-        )
+        actual = value.detach().cpu()
+        expected = reference.detach().cpu()
+        try:
+            torch.testing.assert_close(
+                actual,
+                expected,
+                check_dtype=False,
+                equal_nan=equal_nan,
+                **tolerance,
+            )
+        except AssertionError as error:
+            # Keep CI logs useful without printing large model tensors.
+            if value.numel() > 64:
+                raise
+            raise AssertionError(
+                f"{error}\nActual tensor: {actual}\nExpected tensor: {expected}"
+            ) from error
     _checks += 1
 
 

@@ -28,8 +28,8 @@ function Download([string]$Url, [string]$Path, [string]$Hash) {
 
 function Disable-ServiceIfPresent([string]$Name) {
     if (Get-CimInstance Win32_Service -Filter "Name='$Name'") {
-        Stop-Service -Name $Name -Force
-        Set-Service -Name $Name -StartupType Disabled
+        Stop-Service -Name $Name -Force -ErrorAction SilentlyContinue
+        Set-Service -Name $Name -StartupType Disabled -ErrorAction SilentlyContinue
     }
 }
 
@@ -86,8 +86,8 @@ try {
 
     # Service tuning is adapted from runner-images; see LICENSE.runner-images.
     $Policy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
-    New-Item $Policy -Force | Out-Null
-    New-ItemProperty $Policy -Name NoAutoUpdate -Value 1 -PropertyType DWord -Force | Out-Null
+    New-Item $Policy -Force -ErrorAction SilentlyContinue | Out-Null
+    New-ItemProperty $Policy -Name NoAutoUpdate -Value 1 -PropertyType DWord -Force -ErrorAction SilentlyContinue | Out-Null
     foreach ($Service in @('wuauserv', 'SysMain', 'DiagTrack')) { Disable-ServiceIfPresent $Service }
     Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, BuildNumber, OSArchitecture | `
         ConvertTo-Json | Set-Content (Join-Path $Results 'os.json') -Encoding UTF8
@@ -132,7 +132,7 @@ try {
                 Save-Status
             }
             $Record.outcome = if (@($Record.tests | Where-Object { $_.exit_code -ne 0 }).Count) { 'failed' } else { 'passed' }
-            Remove-Item $Venv -Recurse -Force
+            Remove-Item $Venv -Recurse -Force -ErrorAction SilentlyContinue
         }
         catch {
             $Record.outcome = 'failed'

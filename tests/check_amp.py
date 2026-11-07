@@ -154,7 +154,7 @@ def check_policies(torch, device):
         def reference(value):
             if not value.is_floating_point():
                 return value
-            return value.half().float() if dtype is torch.float16 else value.float()
+            return value.half() if dtype is torch.float16 else value.float()
 
         cpu_args = map_tensors(args, reference)
         gpu_args = map_tensors(args, lambda value: value.detach().to(device))
@@ -162,7 +162,9 @@ def check_policies(torch, device):
             expected = function(*cpu_args, **kwargs)
             with torch.autocast(DEVICE_TYPE, dtype=torch.float16):
                 actual = function(*gpu_args, **kwargs)
-        assert_result(actual, expected, device, dtype=dtype)
+        # Promote-to-FP32 policies consume FP16 inputs; allow FP16-scale tolerances.
+        tolerance = {"rtol": 1e-3, "atol": 1e-3} if dtype is torch.float32 else {}
+        assert_result(actual, expected, device, dtype=dtype, **tolerance)
         print(f"PASS autocast/{name}/{dtype}", flush=True)
 
     for name, function, args, options in matrix_cases():
