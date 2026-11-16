@@ -11,6 +11,20 @@ at::Tensor torch_dml::CdistForward(const at::Tensor& x1,
                                   double p,
                                   std::optional<int64_t> compute_mode)
 {
+    // Repeat PyTorch's own _cdist_forward checks; the batch slices below require at least 2D inputs.
+    TORCH_CHECK(x1.dim() >= 2, "cdist only supports at least 2D tensors, X1 got: ", x1.dim(), "D");
+    TORCH_CHECK(x2.dim() >= 2, "cdist only supports at least 2D tensors, X2 got: ", x2.dim(), "D");
+    TORCH_CHECK(x1.size(-1) == x2.size(-1),
+                "X1 and X2 must have the same number of columns. X1: ",
+                x1.size(-1),
+                " X2: ",
+                x2.size(-1));
+    TORCH_CHECK(
+        at::isFloatingType(x1.scalar_type()), "cdist only supports floating-point dtypes, X1 got: ", x1.scalar_type());
+    TORCH_CHECK(
+        at::isFloatingType(x2.scalar_type()), "cdist only supports floating-point dtypes, X2 got: ", x2.scalar_type());
+    TORCH_CHECK(p >= 0, "cdist only supports non-negative p values");
+
     const auto batch1 = x1.sizes().slice(0, x1.dim() - 2);
     const auto batch2 = x2.sizes().slice(0, x2.dim() - 2);
     const auto batch = at::infer_size(batch1, batch2);
@@ -95,31 +109,18 @@ std::tuple<at::Tensor&, at::Tensor&, at::Tensor&> torch_dml::Unique2Out(const at
 
 at::Tensor torch_dml::PreluKernel(const at::Tensor& self, const at::Tensor& weight)
 {
-    auto w = weight;
-    if (w.dim() == 1 && w.numel() > 1 && self.dim() > 1)
-    {
-        std::vector<int64_t> shape(self.dim(), 1);
-        shape[1] = w.numel();
-        w = w.reshape(shape);
-    }
+    // aten::prelu reshapes per-channel weights to broadcast over self before calling this kernel.
     auto pos = self.gt(0);
-    return at::where(pos, self, self.mul(w));
+    return at::where(pos, self, self.mul(weight));
 }
 
 std::tuple<at::Tensor, at::Tensor> torch_dml::PreluKernelBackward(const at::Tensor& grad_output,
                                                                   const at::Tensor& self,
                                                                   const at::Tensor& weight)
 {
-    auto w = weight;
-    if (w.dim() == 1 && w.numel() > 1 && self.dim() > 1)
-    {
-        std::vector<int64_t> shape(self.dim(), 1);
-        shape[1] = w.numel();
-        w = w.reshape(shape);
-    }
     auto pos = self.gt(0);
     auto gradWeight = at::where(pos, at::zeros_like(grad_output), grad_output.mul(self));
-    return {at::where(pos, grad_output, grad_output.mul(w)), at::sum_to(gradWeight, weight.sizes())};
+    return {at::where(pos, grad_output, grad_output.mul(weight)), at::sum_to(gradWeight, weight.sizes())};
 }
 
 // Legacy NMS accessed dispatcher arrays directly; replace that access with the current typed API.

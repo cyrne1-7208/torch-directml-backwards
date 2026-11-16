@@ -81,8 +81,16 @@ def check_ops(device):
             check(f"{name}/{dtype}", getattr(torch, name), (x, y), device)
         check(f"logical_not/{dtype}", torch.logical_not, (x,), device)
         check(f"bitwise_not/{dtype}", torch.bitwise_not, (x,), device)
-        check(f"any/{dtype}", torch.any, (x,), device, kwargs={"dim": -1})
-        check(f"all/{dtype}", torch.all, (x,), device, kwargs={"dim": -1})
+        # DirectML any/all return bool for unsigned 8-bit input, where PyTorch keeps uint8.
+        for name in ("any", "all"):
+            check(
+                f"{name}/{dtype}",
+                getattr(torch, name),
+                (x,),
+                device,
+                kwargs={"dim": -1},
+                bool_for_uint8=True,
+            )
 
     unary = (
         "abs",
@@ -290,6 +298,13 @@ def check_ops(device):
             (sample((2, 3), left), sample((1, 3), right)),
             device,
         )
+    # Integer reciprocal reaches the DirectML kernel through PyTorch's promoting wrapper.
+    check(
+        f"reciprocal/promotion={torch.int32}",
+        torch.reciprocal,
+        (sample((2, 3), torch.int32),),
+        device,
+    )
 
     x = sample((3, 4)).requires_grad_()
     for name, function in (

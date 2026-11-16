@@ -50,7 +50,15 @@ def output_like(value):
 
 
 def assert_result(
-    actual, expected, device, *, dtype=None, rtol=None, atol=None, equal_nan=False
+    actual,
+    expected,
+    device,
+    *,
+    dtype=None,
+    rtol=None,
+    atol=None,
+    equal_nan=False,
+    bool_for_uint8=False,
 ):
     global _checks
     if map_tensors(actual, lambda _: None) != map_tensors(expected, lambda _: None):
@@ -67,7 +75,9 @@ def assert_result(
             if dtype is not None and reference.is_floating_point()
             else (
                 torch.bool
-                if value.dtype is torch.bool and reference.dtype is torch.uint8
+                if bool_for_uint8
+                and value.dtype is torch.bool
+                and reference.dtype is torch.uint8
                 else reference.dtype
             )
         )
@@ -114,6 +124,7 @@ def check(
     rtol=None,
     atol=None,
     equal_nan=False,
+    bool_for_uint8=False,
 ):
     kwargs = {} if kwargs is None else kwargs
 
@@ -128,7 +139,13 @@ def check(
         expected = (reference or function)(*cpu_args, **cpu_kwargs)
         actual = function(*gpu_args, **gpu_kwargs)
         assert_result(
-            actual, expected, device, rtol=rtol, atol=atol, equal_nan=equal_nan
+            actual,
+            expected,
+            device,
+            rtol=rtol,
+            atol=atol,
+            equal_nan=equal_nan,
+            bool_for_uint8=bool_for_uint8,
         )
         # out= and in-place calls must return the supplied Tensor, not just an equal copy.
         output = (

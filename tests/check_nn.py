@@ -352,6 +352,17 @@ def check_nn(device):
         device,
         gradients=True,
     )
+    # Called directly, the kernel broadcasts a 1D weight over the last dimension, not over channels.
+    check(
+        "_prelu_kernel/trailing-broadcast",
+        torch.ops.aten._prelu_kernel,
+        (
+            sample((2, 3, 3)).requires_grad_(),
+            torch.tensor([0.2, 0.7, 0.4], requires_grad=True),
+        ),
+        device,
+        gradients=True,
+    )
     check(
         "cdist/batched",
         torch.cdist,

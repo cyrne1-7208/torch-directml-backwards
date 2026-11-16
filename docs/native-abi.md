@@ -33,7 +33,7 @@ For linear interpolation with `align_corners=False`, the forward H/W input offse
 
 The compiled-operator cache-key helper copies each float's 32-bit representation into its existing 64-bit slot instead of truncating it to an integer. This distinguishes alignment and explicit-scale settings without changing the cache's storage or lookup mechanism.
 
-[`native/ops.cpp`](../native/ops.cpp) replaces `aten::_cdist_forward`, `_unique2` and `_prelu_kernel` to prevent input tensor mutation and support multi-dimensional and broadcast batching. The replacement cdist creates temporary 3D descriptors so the legacy operator does not alter caller shapes with `unsqueeze_`, and prelu uses composed DirectML operations to support per-channel weights across arbitrary dimensions. `_unique2` flattens inputs to 1D for the DirectML kernel and falls back to CPU when inverse indices or counts are requested.
+[`native/ops.cpp`](../native/ops.cpp) replaces `aten::_cdist_forward`, `_unique2` and `_prelu_kernel` to prevent input tensor mutation and support multi-dimensional and broadcast batching. The replacement cdist repeats PyTorch's input checks, then creates temporary 3D descriptors so the legacy operator does not alter caller shapes with `unsqueeze_`. prelu composes DirectML operations that broadcast the weight as PyTorch's own kernel does; `aten::prelu` has already reshaped per-channel weights for inputs of any dimension. `_unique2` flattens inputs to 1D for the DirectML kernel and falls back to CPU when inverse indices or counts are requested.
 
 ## FP16 automatic mixed precision and completion checks
 
@@ -135,7 +135,7 @@ python tests/check_amp.py
 | `check_functions.py` | Attention with masks and caches, rotary positions, RMSNorm weights/epsilon, and Phi-2, Llama and Phi-3 MLPs against unfused CPU references |
 | `check_amp.py` | Numerical results and dtypes for each explicit autocast policy, context state, exclusions, running statistics, and GradScaler updates |
 
-Numerical checks compare values, shapes, dtypes and devices with CPU references. Integer values and indices must match exactly; floating-point tolerances depend on dtype. Nonuniform upstream gradients check applicable backward paths. These are regression checks, not an exhaustive implementation of every PyTorch operator. Existing CPU fallback warnings remain visible; a successful numerical comparison alone does not establish GPU execution.
+Numerical checks compare values, shapes, dtypes and devices with CPU references. Integer values and indices must match exactly; floating-point tolerances depend on dtype. The one accepted dtype difference is `bool` from `any` and `all` on `uint8` input, where PyTorch keeps `uint8`. Nonuniform upstream gradients check applicable backward paths. These are regression checks, not an exhaustive implementation of every PyTorch operator. Existing CPU fallback warnings remain visible; a successful numerical comparison alone does not establish GPU execution.
 
 For CPU Check without a GPU, run:
 

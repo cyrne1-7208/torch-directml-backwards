@@ -385,6 +385,10 @@ def apply_native(binary, profile, compiled, exports):
             raise ValueError(f"Native replacement does not match at RVA {start:#x}")
         opcode = b"\xe8" if replacement.get("call", False) else b"\xe9"
         branch = opcode + struct.pack("<i", symbols[replacement["symbol"]] - start - 5)
+        if len(expected) < len(branch):
+            raise ValueError(
+                f"Native replacement is shorter than its branch at RVA {start:#x}"
+            )
         binary.patch_address(
             start, list(branch + b"\x90" * (len(expected) - len(branch)))
         )

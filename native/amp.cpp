@@ -2,6 +2,7 @@
 
 #include <ATen/autocast_mode.h>
 #include <ATen/core/grad_mode.h>
+#include <ATen/ops/reciprocal_compositeexplicitautogradnonfunctional_dispatch.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -56,8 +57,9 @@ namespace
     {
         if (value.scalar_type() != at::kDouble)
         {
-            // Preserve the existing allocation and type promotion rules for other dtypes.
-            return at::_ops::reciprocal::redispatch(c10::DispatchKeySet(), value);
+            // Other dtypes keep the path used without this kernel: PyTorch's structured wrapper allocates the
+            // promoted output and calls the existing reciprocal.out kernel.
+            return at::compositeexplicitautogradnonfunctional::reciprocal(value);
         }
         // GradScaler computes the scale reciprocal in FP64, which DirectML 1.15.4 does not support for this operator.
         // TORCH_WARN_ONCE adds static-initialization TLS in this build, so use the ordinary warning.

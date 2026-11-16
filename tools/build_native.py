@@ -120,9 +120,10 @@ def main():
             compiled = lief.COFF.parse(obj)
             if compiled is None:
                 raise ValueError(f"Cannot parse the compiled object: {source}")
-            if any(section.name.startswith(".CRT$XC") for section in compiled.sections):
+            if any(section.name.startswith(".CRT$X") for section in compiled.sections):
                 raise ValueError(
-                    f"Native code needs an unsupported global initializer: {source}"
+                    "Native code needs an unsupported CRT initializer or terminator: "
+                    f"{source}"
                 )
             objects.append(str(obj))
         code = output / "native-code.bin"

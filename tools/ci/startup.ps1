@@ -34,8 +34,8 @@ function Install-Component([string]$Path, [string[]]$Arguments) {
             throw "Installer timed out: $Path"
         }
         $Process.WaitForExit()
-        # Exit code 3010 means installation succeeded but requires a reboot.
-        if ($Process.ExitCode -notin @(0, 3010)) { throw "Installer failed: $Path (exit $($Process.ExitCode))" }
+        # Exit code 1638 means a newer version is already installed; 3010 means installation succeeded but requires a reboot.
+        if ($Process.ExitCode -notin @(0, 1638, 3010)) { throw "Installer failed: $Path (exit $($Process.ExitCode))" }
         return $Process.ExitCode
     }
     finally { $Process.Dispose() }

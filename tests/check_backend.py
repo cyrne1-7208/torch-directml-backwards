@@ -46,12 +46,19 @@ def check_synchronization(device):
                 "The default stream is incomplete after synchronization"
             )
         assert_result(result, source @ source.T, device, atol=1e-4)
-        result = value + size
-        torch.accelerator.synchronize(device)
-        torch.privateuseone.synchronize(device)
+
+    # A long queue makes an ignored synchronization observable without assuming that a first query is false.
+    ones = torch.ones((2048, 2048), device=device)
+    for synchronize in (torch.accelerator.synchronize, torch.privateuseone.synchronize):
+        pending = ones
+        for _ in range(16):
+            pending = pending @ ones * (1 / 2048)
+        synchronize(device)
         if not stream.query():
-            raise AssertionError("Device synchronization did not complete pending work")
-        assert_result(result, source + size, device)
+            raise AssertionError(
+                "Device synchronization returned before queued work completed"
+            )
+        assert_result(pending, torch.ones((2048, 2048)), device)
 
     def work(offset):
         source = sample((64,)) + offset
