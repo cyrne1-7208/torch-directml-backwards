@@ -28,7 +28,7 @@ function Download([string]$Url, [string]$Path, [string]$Hash) {
 
 function Disable-ServiceIfPresent([string]$Name) {
     if (Get-CimInstance Win32_Service -Filter "Name='$Name'") {
-        Stop-Service -Name $Name -Force -ErrorAction SilentlyContinue
+        Stop-Service -Name $Name -Force -NoWait -ErrorAction SilentlyContinue
         Set-Service -Name $Name -StartupType Disabled -ErrorAction SilentlyContinue
     }
 }
